@@ -38,7 +38,7 @@ internal static class PreviewRenderer
         else
         {
             var detected = reading.Buffer is { HasContent: false };
-            var session = new SolveSession(reading.Matrix!, [.. reading.Sequences.Select(s => s.Codes)], detected ? reading.Buffer!.SlotCount : fallbackBuffer);
+            using var session = await SolveSession.StartAsync(reading.Matrix!, [.. reading.Sequences.Select(s => s.Codes)], detected ? reading.Buffer!.SlotCount : fallbackBuffer).ConfigureAwait(true);
             panel.SetSession(session, reading, detected, language);
             OverlayCanvas.Draw(overlay, reading.Grid!, session.Result, session.Matrix, 1.0);
         }

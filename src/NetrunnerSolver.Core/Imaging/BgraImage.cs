@@ -2,19 +2,19 @@ namespace NetrunnerSolver.Core.Imaging;
 
 public sealed class BgraImage
 {
+    // Direct3D 11 텍스처 한 변의 최대치. 모니터 한 대의 캡처는 이보다 클 수 없고,
+    // 이 안에서는 가로×세로×4가 int를 넘지 않는다(16384²×4 = 2^30).
+    public const int MaxDimension = 16384;
+
     private readonly byte[] _pixels;
 
     public BgraImage(int width, int height, byte[] pixels)
     {
         ArgumentNullException.ThrowIfNull(pixels);
-        if (width <= 0 || height <= 0)
+        var expected = ByteCount(width, height);
+        if (pixels.Length != expected)
         {
-            throw new ArgumentException($"Image size must be positive, got {width}x{height}.", nameof(width));
-        }
-
-        if (pixels.Length != width * height * 4)
-        {
-            throw new ArgumentException($"Expected {width * height * 4} bytes, got {pixels.Length}.", nameof(pixels));
+            throw new ArgumentException($"Expected {expected} bytes, got {pixels.Length}.", nameof(pixels));
         }
 
         Width = width;
@@ -31,6 +31,17 @@ public sealed class BgraImage
     public int OffsetY { get; init; }
 
     public ReadOnlySpan<byte> Pixels => _pixels;
+
+    // 픽셀 버퍼 크기. 한 변이 1..MaxDimension을 벗어나면 할당 전에 거절한다.
+    public static int ByteCount(int width, int height)
+    {
+        if (width <= 0 || height <= 0 || width > MaxDimension || height > MaxDimension)
+        {
+            throw new ArgumentException($"Image size must be 1..{MaxDimension} per side, got {width}x{height}.", nameof(width));
+        }
+
+        return checked(width * height * 4);
+    }
 
     public byte Brightness(int x, int y)
     {
@@ -51,7 +62,7 @@ public sealed class BgraImage
 
         var width = right - left;
         var height = bottom - top;
-        var pixels = new byte[width * height * 4];
+        var pixels = new byte[ByteCount(width, height)];
         for (var row = 0; row < height; row++)
         {
             Array.Copy(_pixels, (((top + row) * Width) + left) * 4, pixels, row * width * 4, width * 4);

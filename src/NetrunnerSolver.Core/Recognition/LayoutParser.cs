@@ -12,7 +12,11 @@ public static class LayoutParser
     private const int MaxSize = 8;
     private const int MaxSequenceLines = 6;
 
-    public static GridGeometry? FindMatrix(IReadOnlyList<Token> tokens)
+    // 기준 토큰에서 이만큼 넘게 떨어진 칸 번호는 격자일 수 없다. int로 바꾸기 전에 거른다.
+    private const double MaxLatticeOffset = 1 << 16;
+
+    // 격자 맞추기는 토큰 수의 제곱~세제곱이다. 판독 시간 제한이 실제로 계산을 끊도록 반복마다 취소를 본다.
+    public static GridGeometry? FindMatrix(IReadOnlyList<Token> tokens, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(tokens);
         if (tokens.Count < 4)
@@ -22,16 +26,17 @@ public static class LayoutParser
 
         GridGeometry? best = null;
         var bestScore = 0;
-        var triedHeights = new HashSet<int>();
+        var triedHeights = new HashSet<long>();
         foreach (var seed in tokens)
         {
-            if (!triedHeights.Add((int)Math.Round(seed.Box.Height)))
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!triedHeights.Add((long)Math.Round(seed.Box.Height)))
             {
                 continue;
             }
 
             var group = tokens.Where(t => Math.Abs(t.Box.Height - seed.Box.Height) <= seed.Box.Height * 0.2).ToList();
-            var (grid, score) = FitGrid(group);
+            var (grid, score) = FitGrid(group, cancellationToken);
             if (grid is not null && score > bestScore)
             {
                 best = grid;
@@ -56,7 +61,7 @@ public static class LayoutParser
             }
 
             var tally = votes[cell.Row, cell.Col] ??= [];
-            tally[token.Code] = tally.GetValueOrDefault(token.Code) + 1;
+            tally[token.Code] = tally.GetValueOrDefault(token.Code) + token.Votes;
         }
 
         var cells = new byte[grid.Size, grid.Size];
@@ -93,6 +98,10 @@ public static class LayoutParser
             .Select(line => MergeSamePosition(line, width * 0.5))
             .Where(line => line.Count > 0)
             .ToList();
+        if (lines.Count == 0)
+        {
+            return [];
+        }
 
         var edges = lines.Select(l => l[0].CenterX).ToList();
         var edge = edges
@@ -124,7 +133,7 @@ public static class LayoutParser
         return cells.Length == 0 ? 0 : (double)cells.Cast<byte>().Count(c => c != BreachCodes.Unknown) / cells.Length;
     }
 
-    private static (GridGeometry? Grid, int Score) FitGrid(List<Token> group)
+    private static (GridGeometry? Grid, int Score) FitGrid(List<Token> group, CancellationToken cancellationToken)
     {
         if (group.Count < 4)
         {
@@ -150,12 +159,14 @@ public static class LayoutParser
         List<(Token Token, int Row, int Col)>? bestLattice = null;
         foreach (var anchor in group)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var lattice = new List<(Token, int, int)>();
             foreach (var token in group)
             {
                 var fx = (token.Box.CenterX - anchor.Box.CenterX) / px;
                 var fy = (token.Box.CenterY - anchor.Box.CenterY) / py;
-                if (Math.Abs(fx - Math.Round(fx)) <= LatticeTolerance && Math.Abs(fy - Math.Round(fy)) <= LatticeTolerance)
+                if (Math.Abs(fx) <= MaxLatticeOffset && Math.Abs(fy) <= MaxLatticeOffset
+                    && Math.Abs(fx - Math.Round(fx)) <= LatticeTolerance && Math.Abs(fy - Math.Round(fy)) <= LatticeTolerance)
                 {
                     lattice.Add((token, (int)Math.Round(fy), (int)Math.Round(fx)));
                 }
@@ -167,7 +178,7 @@ public static class LayoutParser
             }
         }
 
-        var component = LargestComponent(bestLattice!);
+        var component = LargestComponent(bestLattice!, cancellationToken);
         var minRow = component.Min(e => e.Row);
         var maxRow = component.Max(e => e.Row);
         var minCol = component.Min(e => e.Col);
@@ -183,6 +194,11 @@ public static class LayoutParser
 
         var (originX, fittedPx) = Fit(component.Select(e => (e.Col - minCol, e.Token.Box.CenterX)).ToList(), px);
         var (originY, fittedPy) = Fit(component.Select(e => (e.Row - minRow, e.Token.Box.CenterY)).ToList(), py);
+        if (!IsPositiveFinite(fittedPx) || !IsPositiveFinite(fittedPy) || !double.IsFinite(originX) || !double.IsFinite(originY))
+        {
+            return (null, 0);
+        }
+
         var cellWidth = Median(component.Select(e => e.Token.Box.Width));
         var cellHeight = Median(component.Select(e => e.Token.Box.Height));
         var grid = new GridGeometry(size, originX, originY, fittedPx, fittedPy, cellWidth, cellHeight, size - rowSpan, size - colSpan);
@@ -218,16 +234,18 @@ public static class LayoutParser
             .First();
     }
 
-    private static List<(Token Token, int Row, int Col)> LargestComponent(List<(Token Token, int Row, int Col)> lattice)
+    private static List<(Token Token, int Row, int Col)> LargestComponent(List<(Token Token, int Row, int Col)> lattice, CancellationToken cancellationToken)
     {
         var remaining = new List<(Token Token, int Row, int Col)>(lattice);
         List<(Token Token, int Row, int Col)> best = [];
         while (remaining.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var component = new List<(Token Token, int Row, int Col)> { remaining[0] };
             remaining.RemoveAt(0);
             for (var i = 0; i < component.Count; i++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var current = component[i];
                 var neighbours = remaining.Where(e => Math.Abs(e.Row - current.Row) <= 2 && Math.Abs(e.Col - current.Col) <= 2).ToList();
                 foreach (var n in neighbours)
@@ -259,6 +277,8 @@ public static class LayoutParser
         var slope = samples.Sum(s => (s.Index - meanIndex) * (s.Value - meanValue)) / samples.Sum(s => Math.Pow(s.Index - meanIndex, 2));
         return (meanValue - (slope * meanIndex), slope);
     }
+
+    private static bool IsPositiveFinite(double value) => double.IsFinite(value) && value > 0;
 
     private static bool IsNearCellSize(GridGeometry grid, Token token) =>
         token.Box.Height >= grid.CellHeight * 0.6 && token.Box.Height <= grid.CellHeight * 1.4;
@@ -301,7 +321,7 @@ public static class LayoutParser
         var merged = new List<(byte Code, Box Box, double CenterX)>();
         foreach (var cluster in GroupBy(line, t => t.Box.CenterX, tolerance))
         {
-            var code = Winner(cluster.GroupBy(t => t.Code).ToDictionary(g => g.Key, g => g.Count()));
+            var code = Winner(cluster.GroupBy(t => t.Code).ToDictionary(g => g.Key, g => g.Sum(t => t.Votes)));
             if (code != BreachCodes.Unknown)
             {
                 merged.Add((code, cluster[0].Box, cluster.Average(t => t.Box.CenterX)));

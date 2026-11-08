@@ -89,6 +89,17 @@ public class LayoutParserTests
     }
 
     [Fact]
+    public void SequenceColumnWhereEveryCodeTiesGivesNoSequences()
+    {
+        // 엔진 둘이 같은 자리를 서로 다르게 읽으면 그 자리는 '?'가 되고, 남는 줄이 없을 수 있다.
+        var grid = new GridGeometry(5, 100, 200, 40, 50, 24, 20, 0, 0);
+        var x = grid.Bounds.Right + 100;
+        Token[] tokens = [new(0x1C, new Box(x, 200, 24, 20)), new(0x55, new Box(x, 200, 24, 20))];
+
+        Assert.Empty(LayoutParser.FindSequences(grid, tokens));
+    }
+
+    [Fact]
     public void GeometryBoxesFollowTheLattice()
     {
         var grid = new GridGeometry(5, 100, 200, 40, 50, 24, 20, 0, 0);

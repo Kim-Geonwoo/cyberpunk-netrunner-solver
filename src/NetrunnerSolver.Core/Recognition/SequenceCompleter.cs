@@ -7,8 +7,9 @@ internal static class SequenceCompleter
     private const int MaxLines = 6;
     private const int MaxCodesPerLine = 8;
 
-    public static IReadOnlyList<SequenceLine> Complete(BgraImage screen, GridGeometry grid, byte[,] cells, IReadOnlyList<SequenceLine> found)
+    public static IReadOnlyList<SequenceLine> Complete(BgraImage screen, GridGeometry grid, byte[,] cells, IReadOnlyList<SequenceLine> found, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (found.Count == 0)
         {
             return found;
@@ -28,7 +29,7 @@ internal static class SequenceCompleter
             .ToList();
         foreach (var line in lines)
         {
-            Extend(screen, samples, line.Codes, line.Boxes, xPitch);
+            Extend(screen, samples, line.Codes, line.Boxes, xPitch, cancellationToken);
         }
 
         var yPitch = LinePitch(lines.Select(l => l.Y).ToList(), grid.PitchY);
@@ -36,6 +37,7 @@ internal static class SequenceCompleter
         var y = lines[0].Y;
         while (lines.Count < MaxLines)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var guess = y + yPitch;
             if (guess > limit)
             {
@@ -69,7 +71,7 @@ internal static class SequenceCompleter
             {
                 codes.Add(code);
                 lineBoxes.Add(first);
-                Extend(screen, samples, codes, lineBoxes, xPitch);
+                Extend(screen, samples, codes, lineBoxes, xPitch, cancellationToken);
             }
 
             if (codes.Count < 2)
@@ -113,10 +115,11 @@ internal static class SequenceCompleter
         return samples;
     }
 
-    private static void Extend(BgraImage screen, List<Token> samples, List<byte> codes, List<Box> boxes, double xPitch)
+    private static void Extend(BgraImage screen, List<Token> samples, List<byte> codes, List<Box> boxes, double xPitch, CancellationToken cancellationToken)
     {
         while (codes.Count < MaxCodesPerLine)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var next = boxes[^1].Offset(xPitch, 0);
             if (next.Right > screen.Width)
             {

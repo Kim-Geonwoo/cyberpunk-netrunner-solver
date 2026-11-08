@@ -59,7 +59,17 @@ public partial class App : Application
         BgraImage? simulated = null;
         if (simulatePath is not null)
         {
-            simulated = await ImageFile.LoadAsync(simulatePath).ConfigureAwait(true);
+            try
+            {
+                simulated = await ImageFile.LoadAsync(simulatePath).ConfigureAwait(true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Runtime.InteropServices.COMException)
+            {
+                // 트레이도 컨트롤러도 없이 뮤텍스만 쥔 채 남지 않도록 기록하고 끝낸다.
+                FileLog.Error($"simulate image load failed: {simulatePath}", ex);
+                Shutdown(1);
+                return;
+            }
         }
 
         _controller = new AppController(Dispatcher, settings, language, simulated);

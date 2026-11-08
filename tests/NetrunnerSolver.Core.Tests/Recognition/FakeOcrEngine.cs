@@ -34,6 +34,25 @@ internal sealed class FakeOcrEngine(
     }
 }
 
+// 정해진 번째 호출의 결과를 돌려준 직후 읽기를 취소한다. OCR 경계가 아닌 계산 단계에서 취소가 먹는지 본다.
+internal sealed class CancelOnCallEngine(IOcrEngine inner, CancellationTokenSource source, int cancelOnCall) : IOcrEngine
+{
+    private int _calls;
+
+    public string Language => inner.Language;
+
+    public async Task<IReadOnlyList<OcrWord>> RecognizeAsync(BgraImage image, CancellationToken cancellationToken)
+    {
+        var words = await inner.RecognizeAsync(image, cancellationToken).ConfigureAwait(false);
+        if (Interlocked.Increment(ref _calls) == cancelOnCall)
+        {
+            await source.CancelAsync().ConfigureAwait(false);
+        }
+
+        return words;
+    }
+}
+
 internal sealed class ThrowingOcrEngine : IOcrEngine
 {
     public string Language => "xx";

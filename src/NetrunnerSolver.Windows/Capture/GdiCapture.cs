@@ -44,7 +44,7 @@ public static class GdiCapture
                 Planes = 1,
                 BitCount = 32,
             };
-            var pixels = new byte[area.Width * area.Height * 4];
+            var pixels = new byte[BgraImage.ByteCount(area.Width, area.Height)];
             if (NativeMethods.GetDIBits(memory, bitmap, 0, (uint)area.Height, pixels, ref header, NativeMethods.DibRgbColors) != area.Height)
             {
                 throw new InvalidOperationException("GetDIBits failed.");

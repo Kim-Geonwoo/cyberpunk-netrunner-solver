@@ -99,11 +99,7 @@ internal sealed class AppController : IDisposable
 
     public void Dispose()
     {
-        if (_session is not null)
-        {
-            _session.Changed -= OnSessionChanged;
-        }
-
+        DropSession();
         _overlay.Close();
         _panel.Close();
     }
@@ -119,15 +115,11 @@ internal sealed class AppController : IDisposable
             using var timeout = new CancellationTokenSource(ReadTimeout);
             var screen = _simulated ?? await Task.Run(() => ScreenCapture.Capture(target), timeout.Token).ConfigureAwait(true);
             var reading = await Task.Run(() => _reader.ReadAsync(screen, timeout.Token), timeout.Token).ConfigureAwait(true);
-            FileLog.Info($"read {screen.Width}x{screen.Height} in {reading.Elapsed.TotalMilliseconds:F0} ms, grid {reading.Grid?.Size.ToString(CultureInfo.InvariantCulture) ?? "-"}, sequences {reading.Sequences.Count}, buffer {reading.Buffer?.SlotCount.ToString(CultureInfo.InvariantCulture) ?? "-"}, warnings [{string.Join(", ", reading.Warnings)}]");
+            FileLog.Info($"read {screen.Width}x{screen.Height} in {reading.Elapsed.TotalMilliseconds:F0} ms, tokens {reading.TokenCount}, grid {reading.Grid?.Size.ToString(CultureInfo.InvariantCulture) ?? "-"}, sequences {reading.Sequences.Count}, buffer {reading.Buffer?.SlotCount.ToString(CultureInfo.InvariantCulture) ?? "-"}, warnings [{string.Join(", ", reading.Warnings)}]");
             _area = area;
             _lastScreen = screen;
             _reading = reading;
-            if (_session is not null)
-            {
-                _session.Changed -= OnSessionChanged;
-                _session = null;
-            }
+            DropSession();
 
             if (reading.Outcome == ReadOutcome.NotFound)
             {
@@ -144,7 +136,7 @@ internal sealed class AppController : IDisposable
             {
                 var detected = reading.Buffer is not null && !reading.Buffer.HasContent;
                 var buffer = detected ? reading.Buffer!.SlotCount : _settings.LastBufferSize;
-                _session = new SolveSession(reading.Matrix!, [.. reading.Sequences.Select(s => s.Codes)], buffer);
+                _session = await SolveSession.StartAsync(reading.Matrix!, [.. reading.Sequences.Select(s => s.Codes)], buffer, timeout.Token).ConfigureAwait(true);
                 _session.Changed += OnSessionChanged;
                 RememberBuffer(_session.BufferSize);
                 _overlay.ShowOn(area);
@@ -182,6 +174,18 @@ internal sealed class AppController : IDisposable
         _panel.ShowNotFound(_language, area);
         _poller?.WatchEscape(() => _dispatcher.InvokeAsync(Hide));
         IsShown = true;
+    }
+
+    private void DropSession()
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        _session.Changed -= OnSessionChanged;
+        _session.Dispose();
+        _session = null;
     }
 
     private void OnSessionChanged(object? sender, EventArgs e)

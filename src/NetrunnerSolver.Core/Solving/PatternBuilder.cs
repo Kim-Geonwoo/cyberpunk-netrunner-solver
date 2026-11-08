@@ -4,6 +4,11 @@ internal static class PatternBuilder
 {
     public const int Any = -1;
 
+    // 한 길이에서 만드는 패턴 수의 상한. 시퀀스 6개(각 1~3코드)·버퍼 12의 실제 조합은 수만 개 안이고,
+    // 이를 넘는 경우(서로 다른 한 코드 시퀀스 6개, 길이 12에서 33만 개)는 1초 제한 안에 이만큼도 다 풀지 못한다.
+    // 상한이 없으면 그 경우 패턴과 중복 검사 문자열만으로 100MB를 넘게 잡는다.
+    public const int MaxPatterns = 100_000;
+
     public static IReadOnlyList<int[]> Build(IReadOnlyList<IReadOnlyList<byte>> sequences, int maxLength)
     {
         ArgumentNullException.ThrowIfNull(sequences);
@@ -29,7 +34,7 @@ internal static class PatternBuilder
         var found = new List<int[]>();
         foreach (var order in Permutations(sequences.Count))
         {
-            if (deadline.Expired)
+            if (deadline.Expired || found.Count >= MaxPatterns)
             {
                 break;
             }
@@ -54,6 +59,11 @@ internal static class PatternBuilder
         List<int[]> found,
         Deadline deadline)
     {
+        if (found.Count >= MaxPatterns)
+        {
+            return;
+        }
+
         if (depth == order.Length)
         {
             if (usedLength == length && seen.Add(string.Join(',', buffer)))

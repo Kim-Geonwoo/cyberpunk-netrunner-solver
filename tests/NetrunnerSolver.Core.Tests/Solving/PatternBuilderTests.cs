@@ -60,6 +60,30 @@ public class PatternBuilderTests
         }
     }
 
+    [Fact]
+    public void PatternCountStopsAtTheCap()
+    {
+        // 서로 다른 한 코드 시퀀스 6개는 길이 12에서 패턴이 33만 개를 넘는다.
+        var singles = Seqs([0x1C], [0x55], [0x7A], [0xBD], [0xE9], [0xFF]);
+
+        var patterns = PatternBuilder.BuildExact(singles, 12, Deadline.None);
+
+        Assert.Equal(PatternBuilder.MaxPatterns, patterns.Count);
+        Assert.Equal(patterns.Count, patterns.Select(p => string.Join(',', p)).Distinct().Count());
+    }
+
+    [Fact]
+    public void RealisticSixSequencesStayWellUnderTheCap()
+    {
+        // 두 코드 시퀀스 6개, 같은 코드가 겹치는 최악에 가까운 조합도 모든 패턴을 다 만든다.
+        var pairs = Seqs([0x1C, 0x1C], [0x1C, 0x55], [0x55, 0x1C], [0x55, 0x55], [0x1C, 0x7A], [0x7A, 0x1C]);
+
+        for (var length = 1; length <= 12; length++)
+        {
+            Assert.InRange(PatternBuilder.BuildExact(pairs, length, Deadline.None).Count, 0, PatternBuilder.MaxPatterns / 4);
+        }
+    }
+
     public static TheoryData<byte[][], int> Inputs() => new()
     {
         { new[] { new byte[] { 0x1C, 0x55 } }, 4 },

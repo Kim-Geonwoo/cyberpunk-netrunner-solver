@@ -1,4 +1,5 @@
 using System.Globalization;
+using NetrunnerSolver.Core.Text;
 
 namespace NetrunnerSolver.App.Logging;
 
@@ -36,7 +37,7 @@ internal static class FileLog
     private static void Write(string level, string message)
     {
         var now = DateTime.Now;
-        var line = $"{now.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)} {level} {message}{Environment.NewLine}";
+        var line = LogText.Line(now, level, message);
         lock (Gate)
         {
             try
