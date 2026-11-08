@@ -1,0 +1,23 @@
+# AI 산출물(레포 밖에 둔다)
+/CLAUDE.md
+/AGENTS.md
+/.claude/
+/memory/
+/docs/design/
+/docs/superpowers/
+.superpowers/
+/.screenshots/
+/.local/
+
+# .NET
+bin/
+obj/
+artifacts/
+publish/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+TestResults/
+*.binlog

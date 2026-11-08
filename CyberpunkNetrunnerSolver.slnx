@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NetrunnerSolver.App/NetrunnerSolver.App.csproj" />
+    <Project Path="src/NetrunnerSolver.Core/NetrunnerSolver.Core.csproj" />
+    <Project Path="src/NetrunnerSolver.Windows/NetrunnerSolver.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NetrunnerSolver.Core.Tests/NetrunnerSolver.Core.Tests.csproj" />
+    <Project Path="tests/NetrunnerSolver.Windows.Tests/NetrunnerSolver.Windows.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/NetrunnerSolver.OcrDump/NetrunnerSolver.OcrDump.csproj" />
+  </Folder>
+</Solution>
