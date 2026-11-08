@@ -6,9 +6,10 @@ on:
   pull_request:
 permissions:
   contents: read
+# 같은 브랜치·PR에 새 커밋이 오면 앞 실행을 취소한다. 집 서버 CI(home-ci)는 cancel-in-progress가 문자 그대로 true일 때만 돌린다.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 jobs:
   verify:
     runs-on: ubuntu-latest
