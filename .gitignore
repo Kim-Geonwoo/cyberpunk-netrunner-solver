@@ -9,6 +9,13 @@
 /.screenshots/
 /.local/
 
+# 비밀값이 들어갈 수 있는 파일(혹시 생겨도 커밋되지 않게)
+.env*
+*.pem
+*.key
+*.pfx
+credentials*.json
+
 # .NET
 bin/
 obj/

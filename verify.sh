@@ -9,7 +9,8 @@ case "$(uname -s)" in
 esac
 
 echo "== verify: $target"
-dotnet restore "$target"
+# CI(GitHub Actions는 CI=true)에서는 packages.lock.json과 다르면 실패한다. 로컬에서는 잠금 파일을 갱신한다.
+dotnet restore "$target" ${CI:+--locked-mode}
 dotnet format "$target" --verify-no-changes --no-restore
 dotnet build "$target" -c Release --no-restore -warnaserror
 dotnet test "$target" -c Release --no-build
