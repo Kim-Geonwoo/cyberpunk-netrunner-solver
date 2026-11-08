@@ -32,6 +32,9 @@ public sealed class BgraImage
 
     public ReadOnlySpan<byte> Pixels => _pixels;
 
+    // 픽셀을 복사해 가는 API(WinRT·WPF)에 배열째 넘길 때 쓴다. 읽기 전용으로만 다룬다.
+    public ReadOnlyMemory<byte> PixelMemory => _pixels;
+
     // 픽셀 버퍼 크기. 한 변이 1..MaxDimension을 벗어나면 할당 전에 거절한다.
     public static int ByteCount(int width, int height)
     {

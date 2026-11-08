@@ -12,8 +12,15 @@ public static class GlyphMatcher
     public static byte Classify(BgraImage image, Box target, IReadOnlyList<Token> samples, double minScore = 0.80)
     {
         ArgumentNullException.ThrowIfNull(image);
+        return Classify(new GlyphFeatures(image), target, samples, minScore);
+    }
+
+    // 판독 한 번 동안 같은 GlyphFeatures를 넘기면 표본 칸의 특징을 호출마다 다시 만들지 않는다.
+    internal static byte Classify(GlyphFeatures glyphs, Box target, IReadOnlyList<Token> samples, double minScore = 0.80)
+    {
+        ArgumentNullException.ThrowIfNull(glyphs);
         ArgumentNullException.ThrowIfNull(samples);
-        var wanted = Features(image, target);
+        var wanted = glyphs.Get(target);
         if (wanted is null || samples.Count == 0)
         {
             return BreachCodes.Unknown;
@@ -22,7 +29,7 @@ public static class GlyphMatcher
         var scores = new Dictionary<byte, double>();
         foreach (var sample in samples)
         {
-            var features = Features(image, sample.Box);
+            var features = glyphs.Get(sample.Box);
             if (features is null)
             {
                 continue;
@@ -44,7 +51,7 @@ public static class GlyphMatcher
         return ranked.Count > 1 && ranked[0].Value - ranked[1].Value < Margin ? BreachCodes.Unknown : ranked[0].Key;
     }
 
-    private static double[]? Features(BgraImage image, Box box)
+    internal static double[]? Features(BgraImage image, Box box)
     {
         BgraImage crop;
         try

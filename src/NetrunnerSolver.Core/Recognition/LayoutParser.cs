@@ -27,6 +27,9 @@ public static class LayoutParser
         GridGeometry? best = null;
         var bestScore = 0;
         var triedHeights = new HashSet<long>();
+        // 높이가 비슷한 기준 토큰은 대개 같은 토큰 묶음을 만든다. 같은 묶음은 같은 격자를 내므로 한 번만 맞춘다.
+        var triedGroups = new HashSet<int[]>(IntSequenceComparer.Instance);
+        var members = new List<int>();
         foreach (var seed in tokens)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -35,7 +38,21 @@ public static class LayoutParser
                 continue;
             }
 
-            var group = tokens.Where(t => Math.Abs(t.Box.Height - seed.Box.Height) <= seed.Box.Height * 0.2).ToList();
+            members.Clear();
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (Math.Abs(tokens[i].Box.Height - seed.Box.Height) <= seed.Box.Height * 0.2)
+                {
+                    members.Add(i);
+                }
+            }
+
+            if (!triedGroups.Add([.. members]))
+            {
+                continue;
+            }
+
+            var group = members.ConvertAll(i => tokens[i]);
             var (grid, score) = FitGrid(group, cancellationToken);
             if (grid is not null && score > bestScore)
             {
@@ -226,12 +243,30 @@ public static class LayoutParser
             return null;
         }
 
-        return gaps
-            .Select(g => (Gap: g, Support: gaps.Where(o => Math.Abs(o - g) <= g * 0.12).ToList()))
-            .OrderByDescending(c => c.Support.Count)
-            .ThenBy(c => c.Gap)
-            .Select(c => c.Support.Average())
-            .First();
+        // 가장 많은 간격이 ±12% 안에 모이는 간격(같으면 더 작은 것, 그것도 같으면 앞의 것)을 고르고 그 무리의 평균을 낸다.
+        // 후보마다 목록을 만들지 않고 개수만 센 뒤, 고른 것 하나만 목록으로 평균을 낸다.
+        var bestIndex = 0;
+        var bestSupport = -1;
+        for (var i = 0; i < gaps.Count; i++)
+        {
+            var support = 0;
+            foreach (var other in gaps)
+            {
+                if (Math.Abs(other - gaps[i]) <= gaps[i] * 0.12)
+                {
+                    support++;
+                }
+            }
+
+            if (support > bestSupport || (support == bestSupport && gaps[i] < gaps[bestIndex]))
+            {
+                bestIndex = i;
+                bestSupport = support;
+            }
+        }
+
+        var chosen = gaps[bestIndex];
+        return gaps.Where(o => Math.Abs(o - chosen) <= chosen * 0.12).ToList().Average();
     }
 
     private static List<(Token Token, int Row, int Col)> LargestComponent(List<(Token Token, int Row, int Col)> lattice, CancellationToken cancellationToken)
@@ -299,17 +334,21 @@ public static class LayoutParser
 
     private static List<List<Token>> GroupBy(IEnumerable<Token> tokens, Func<Token, double> key, double tolerance)
     {
+        // 마지막 묶음의 평균은 더해 온 합으로 낸다. Average와 같은 순서로 더하므로 값이 같고, 묶음이 커져도 선형이다.
         var groups = new List<List<Token>>();
+        var sum = 0.0;
         foreach (var token in tokens.OrderBy(key))
         {
-            var last = groups.Count > 0 ? groups[^1] : null;
-            if (last is not null && Math.Abs(key(token) - last.Average(key)) <= tolerance)
+            var value = key(token);
+            if (groups.Count > 0 && Math.Abs(value - (sum / groups[^1].Count)) <= tolerance)
             {
-                last.Add(token);
+                groups[^1].Add(token);
+                sum += value;
             }
             else
             {
                 groups.Add([token]);
+                sum = value;
             }
         }
 

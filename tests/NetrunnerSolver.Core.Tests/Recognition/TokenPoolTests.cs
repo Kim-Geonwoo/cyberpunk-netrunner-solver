@@ -84,7 +84,7 @@ public class TokenPoolTests
     [Fact]
     public void FindMatrixStopsWhenCancelledMidway()
     {
-        // 토큰 목록을 한 바퀴 다 읽은 순간(첫 격자 맞추기 직전) 취소한다. 그 뒤 계산이 취소를 봐야 한다.
+        // 토큰을 한 바퀴만큼 읽은 순간(첫 묶음을 모으는 도중) 취소한다. 그 뒤 격자 맞추기가 취소를 봐야 한다.
         using var cts = new CancellationTokenSource();
         var tokens = new CancelAfterFirstPass(OcrFixture.Tokens("game-ko-5x5-a.ko"), cts);
 
@@ -106,27 +106,61 @@ public class TokenPoolTests
         OcrFixture.AssertCells(OcrFixture.MatrixA, LayoutParser.ReadCells(again, tokens));
     }
 
+    // 원소를 목록 길이만큼 읽은 순간(인덱서든 열거든) 취소한다.
     private sealed class CancelAfterFirstPass(IReadOnlyList<Token> inner, CancellationTokenSource source) : IReadOnlyList<Token>
     {
-        private int _passes;
+        private int _reads;
 
         public int Count => inner.Count;
 
-        public Token this[int index] => inner[index];
+        public Token this[int index] => Read(inner[index]);
 
         public IEnumerator<Token> GetEnumerator()
         {
             foreach (var token in inner)
             {
-                yield return token;
-            }
-
-            if (++_passes == 1)
-            {
-                source.Cancel();
+                yield return Read(token);
             }
         }
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        private Token Read(Token token)
+        {
+            if (++_reads == inner.Count)
+            {
+                source.Cancel();
+            }
+
+            return token;
+        }
+    }
+}
+
+public class GlyphFeaturesTests
+{
+    [Fact]
+    public void EachBoxIsComputedOnceAndClassifiesLikeAFreshCache()
+    {
+        var (width, height, words) = OcrFixture.Load("game-ko-5x5-a.ko");
+        var screen = GlyphScene.Draw(width, height, words);
+        var grid = LayoutParser.FindMatrix(OcrFixture.Tokens("game-ko-5x5-a.ko"))!;
+        var target = grid.CellBox(2, 2);
+        var samples = Enumerable.Range(0, 5)
+            .SelectMany(r => Enumerable.Range(0, 5).Select(c => new Token(OcrFixture.MatrixA[r, c], grid.CellBox(r, c))))
+            .Where(t => t.Box != target)
+            .ToList();
+        var glyphs = new GlyphFeatures(screen);
+
+        var first = GlyphMatcher.Classify(glyphs, target, samples);
+        var computed = glyphs.Count;
+        var second = GlyphMatcher.Classify(glyphs, target, samples);
+
+        Assert.Equal(OcrFixture.MatrixA[2, 2], first);
+        Assert.Equal(first, second);
+        Assert.Equal(samples.Count + 1, computed);
+        Assert.Equal(computed, glyphs.Count);
+        Assert.Same(glyphs.Get(samples[0].Box), glyphs.Get(samples[0].Box));
+        Assert.Equal(first, GlyphMatcher.Classify(screen, target, samples));
     }
 }

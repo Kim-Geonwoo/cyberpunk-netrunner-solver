@@ -21,6 +21,8 @@ internal static class PatternBuilder
         return patterns;
     }
 
+    // 시퀀스를 놓는 순서(순열)마다, 앞 시퀀스보다 뒤에서 시작하도록 놓아 보며 길이가 꼭 맞는 버퍼를 모은다.
+    // 처음 나온 순서대로, 같은 패턴은 한 번만 낸다.
     public static IReadOnlyList<int[]> BuildExact(IReadOnlyList<IReadOnlyList<byte>> sequences, int length, Deadline deadline)
     {
         ArgumentNullException.ThrowIfNull(sequences);
@@ -30,116 +32,104 @@ internal static class PatternBuilder
             return [];
         }
 
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var found = new List<int[]>();
-        foreach (var order in Permutations(sequences.Count))
-        {
-            if (deadline.Expired || found.Count >= MaxPatterns)
-            {
-                break;
-            }
-
-            var buffer = new int[length];
-            Array.Fill(buffer, Any);
-            Place(sequences, order, 0, 0, buffer, 0, length, seen, found, deadline);
-        }
-
-        return found;
+        var builder = new Builder([.. sequences.Select(s => s.Select(code => (int)code).ToArray())], length, deadline);
+        builder.Permute(0);
+        return builder.Found;
     }
 
-    private static void Place(
-        IReadOnlyList<IReadOnlyList<byte>> sequences,
-        int[] order,
-        int depth,
-        int minStart,
-        int[] buffer,
-        int usedLength,
-        int length,
-        HashSet<string> seen,
-        List<int[]> found,
-        Deadline deadline)
+    // 순열과 배치를 같은 버퍼·배열 위에서 바꿨다 되돌리며(백트래킹) 찾는다. 단계마다 복제하지 않고 새 패턴일 때만 복사한다.
+    private sealed class Builder(int[][] sequences, int length, Deadline deadline)
     {
-        if (found.Count >= MaxPatterns)
-        {
-            return;
-        }
+        private readonly int[] _order = [.. Enumerable.Range(0, sequences.Length)];
+        private readonly int[] _buffer = new int[length];
+        private readonly int[] _saved = new int[sequences.Length * length];
+        private readonly HashSet<int[]> _seen = new(IntSequenceComparer.Instance);
+        private bool _stopped;
 
-        if (depth == order.Length)
+        public List<int[]> Found { get; } = [];
+
+        // 첫 자리부터 차례로 맞바꾸는 순열 순서. 순열마다 시작 전에 제한과 상한을 본다.
+        public void Permute(int k)
         {
-            if (usedLength == length && seen.Add(string.Join(',', buffer)))
+            if (k == _order.Length)
             {
-                found.Add((int[])buffer.Clone());
+                if (deadline.Expired || Found.Count >= MaxPatterns)
+                {
+                    _stopped = true;
+                    return;
+                }
+
+                Array.Fill(_buffer, Any);
+                Place(0, 0, 0);
+                return;
             }
 
-            return;
-        }
-
-        if (deadline.Expired)
-        {
-            return;
-        }
-
-        var sequence = sequences[order[depth]];
-        if (sequence.Count == 0)
-        {
-            Place(sequences, order, depth + 1, minStart, buffer, usedLength, length, seen, found, deadline);
-            return;
-        }
-
-        for (var start = minStart; start + sequence.Count <= length; start++)
-        {
-            if (!Fits(buffer, sequence, start))
+            for (var i = k; i < _order.Length && !_stopped; i++)
             {
-                continue;
-            }
-
-            var next = (int[])buffer.Clone();
-            for (var i = 0; i < sequence.Count; i++)
-            {
-                next[start + i] = sequence[i];
-            }
-
-            Place(sequences, order, depth + 1, start, next, Math.Max(usedLength, start + sequence.Count), length, seen, found, deadline);
-        }
-    }
-
-    private static bool Fits(int[] buffer, IReadOnlyList<byte> sequence, int start)
-    {
-        for (var i = 0; i < sequence.Count; i++)
-        {
-            var current = buffer[start + i];
-            if (current != Any && current != sequence[i])
-            {
-                return false;
+                (_order[k], _order[i]) = (_order[i], _order[k]);
+                Permute(k + 1);
+                (_order[k], _order[i]) = (_order[i], _order[k]);
             }
         }
 
-        return true;
-    }
-
-    private static IEnumerable<int[]> Permutations(int count)
-    {
-        var items = Enumerable.Range(0, count).ToArray();
-        return Permute(items, 0);
-    }
-
-    private static IEnumerable<int[]> Permute(int[] items, int k)
-    {
-        if (k == items.Length)
+        private void Place(int depth, int minStart, int usedLength)
         {
-            yield return (int[])items.Clone();
-            yield break;
-        }
-
-        for (var i = k; i < items.Length; i++)
-        {
-            (items[k], items[i]) = (items[i], items[k]);
-            foreach (var permutation in Permute(items, k + 1))
+            if (Found.Count >= MaxPatterns)
             {
-                yield return permutation;
+                return;
             }
 
-            (items[k], items[i]) = (items[i], items[k]);
+            if (depth == _order.Length)
+            {
+                if (usedLength == length && !_seen.Contains(_buffer))
+                {
+                    var pattern = (int[])_buffer.Clone();
+                    _seen.Add(pattern);
+                    Found.Add(pattern);
+                }
+
+                return;
+            }
+
+            if (deadline.Expired)
+            {
+                return;
+            }
+
+            var sequence = sequences[_order[depth]];
+            if (sequence.Length == 0)
+            {
+                Place(depth + 1, minStart, usedLength);
+                return;
+            }
+
+            var save = _saved.AsSpan(depth * length, sequence.Length);
+            for (var start = minStart; start + sequence.Length <= length; start++)
+            {
+                var slot = _buffer.AsSpan(start, sequence.Length);
+                if (!Fits(slot, sequence))
+                {
+                    continue;
+                }
+
+                slot.CopyTo(save);
+                sequence.CopyTo(slot);
+                Place(depth + 1, start, Math.Max(usedLength, start + sequence.Length));
+                save.CopyTo(slot);
+            }
+        }
+
+        private static bool Fits(Span<int> slot, int[] sequence)
+        {
+            for (var i = 0; i < sequence.Length; i++)
+            {
+                if (slot[i] != Any && slot[i] != sequence[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 }

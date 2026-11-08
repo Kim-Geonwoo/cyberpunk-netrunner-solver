@@ -7,8 +7,13 @@ internal static class SequenceCompleter
     private const int MaxLines = 6;
     private const int MaxCodesPerLine = 8;
 
-    public static IReadOnlyList<SequenceLine> Complete(BgraImage screen, GridGeometry grid, byte[,] cells, IReadOnlyList<SequenceLine> found, CancellationToken cancellationToken)
+    public static IReadOnlyList<SequenceLine> Complete(BgraImage screen, GridGeometry grid, byte[,] cells, IReadOnlyList<SequenceLine> found, CancellationToken cancellationToken) =>
+        Complete(new GlyphFeatures(screen), grid, cells, found, cancellationToken);
+
+    public static IReadOnlyList<SequenceLine> Complete(GlyphFeatures glyphs, GridGeometry grid, byte[,] cells, IReadOnlyList<SequenceLine> found, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(glyphs);
+        var screen = glyphs.Image;
         cancellationToken.ThrowIfCancellationRequested();
         if (found.Count == 0)
         {
@@ -29,7 +34,7 @@ internal static class SequenceCompleter
             .ToList();
         foreach (var line in lines)
         {
-            Extend(screen, samples, line.Codes, line.Boxes, xPitch, cancellationToken);
+            Extend(glyphs, samples, line.Codes, line.Boxes, xPitch, cancellationToken);
         }
 
         var yPitch = LinePitch(lines.Select(l => l.Y).ToList(), grid.PitchY);
@@ -66,12 +71,12 @@ internal static class SequenceCompleter
             var codes = new List<byte>();
             var lineBoxes = new List<Box>();
             var first = new Box(left - (tokenWidth / 2), snapped.Value - (tokenHeight / 2), tokenWidth, tokenHeight);
-            var code = GlyphMatcher.Classify(screen, first, samples);
+            var code = GlyphMatcher.Classify(glyphs, first, samples);
             if (code != BreachCodes.Unknown)
             {
                 codes.Add(code);
                 lineBoxes.Add(first);
-                Extend(screen, samples, codes, lineBoxes, xPitch, cancellationToken);
+                Extend(glyphs, samples, codes, lineBoxes, xPitch, cancellationToken);
             }
 
             if (codes.Count < 2)
@@ -115,8 +120,9 @@ internal static class SequenceCompleter
         return samples;
     }
 
-    private static void Extend(BgraImage screen, List<Token> samples, List<byte> codes, List<Box> boxes, double xPitch, CancellationToken cancellationToken)
+    private static void Extend(GlyphFeatures glyphs, List<Token> samples, List<byte> codes, List<Box> boxes, double xPitch, CancellationToken cancellationToken)
     {
+        var screen = glyphs.Image;
         while (codes.Count < MaxCodesPerLine)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -126,7 +132,7 @@ internal static class SequenceCompleter
                 return;
             }
 
-            var code = GlyphMatcher.Classify(screen, next, samples);
+            var code = GlyphMatcher.Classify(glyphs, next, samples);
             if (code == BreachCodes.Unknown)
             {
                 return;

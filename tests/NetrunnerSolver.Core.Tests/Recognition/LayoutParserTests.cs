@@ -26,6 +26,18 @@ public class LayoutParserTests
     }
 
     [Fact]
+    public void GridGeometryIsExactlyAsBefore()
+    {
+        // 묶음 평균·간격 지지를 할당 없이 다시 쓴 뒤에도 실수 값까지 같다(바뀌면 칸 위치와 오버레이가 미세하게 움직인다).
+        var grid = LayoutParser.FindMatrix(OcrFixture.Tokens("game-ko-5x5-a.ko"));
+
+        Assert.NotNull(grid);
+        Assert.Equal(
+            (5, 336.5799999999999, 385.86, 67.37000000000002, 67.51, 34.0, 24.0),
+            (grid.Size, grid.OriginX, grid.OriginY, grid.PitchX, grid.PitchY, grid.CellWidth, grid.CellHeight));
+    }
+
+    [Fact]
     public void MissingInnerRowStaysInTheGridAsUnknown()
     {
         var full = OcrFixture.Tokens("game-ko-5x5-a.ko");

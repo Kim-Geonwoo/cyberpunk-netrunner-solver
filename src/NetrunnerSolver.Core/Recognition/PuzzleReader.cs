@@ -79,11 +79,12 @@ public sealed class PuzzleReader
             return Finish(new PuzzleReading(null, null, [], null, warnings, clock.Elapsed), tokens, warnings);
         }
 
-        grid = await ResolveAmbiguityAsync(screen, grid, tokens, warnings, cancellationToken).ConfigureAwait(false);
-        grid = ExpandEdges(screen, grid, tokens.Tokens, cancellationToken);
-        var cells = await ReadCellsAsync(screen, grid, tokens, warnings, cancellationToken).ConfigureAwait(false);
+        var glyphs = new GlyphFeatures(screen);
+        grid = await ResolveAmbiguityAsync(glyphs, grid, tokens, warnings, cancellationToken).ConfigureAwait(false);
+        grid = ExpandEdges(glyphs, grid, tokens.Tokens, cancellationToken);
+        var cells = await ReadCellsAsync(glyphs, grid, tokens, warnings, cancellationToken).ConfigureAwait(false);
         var sequences = await ReadSequencesAsync(screen, grid, tokens, warnings, cancellationToken).ConfigureAwait(false);
-        sequences = SequenceCompleter.Complete(screen, grid, cells, sequences, cancellationToken);
+        sequences = SequenceCompleter.Complete(glyphs, grid, cells, sequences, cancellationToken);
         if (CursorDetector.CoversSequences(screen, grid, sequences))
         {
             Warn(warnings, ReadWarning.CursorCovering);
@@ -112,8 +113,9 @@ public sealed class PuzzleReader
         return reading with { TokenCount = tokens.Count };
     }
 
-    private async Task<GridGeometry> ResolveAmbiguityAsync(BgraImage screen, GridGeometry grid, TokenPool tokens, List<ReadWarning> warnings, CancellationToken cancellationToken)
+    private async Task<GridGeometry> ResolveAmbiguityAsync(GlyphFeatures glyphs, GridGeometry grid, TokenPool tokens, List<ReadWarning> warnings, CancellationToken cancellationToken)
     {
+        var screen = glyphs.Image;
         if (grid.AmbiguousRows == 0 && grid.AmbiguousCols == 0)
         {
             return grid;
@@ -160,7 +162,7 @@ public sealed class PuzzleReader
                 var missing = Enumerable.Range(0, candidate.Size)
                     .SelectMany(r => Enumerable.Range(0, candidate.Size).Select(c => new Cell(r, c)))
                     .Where(cell => cells[cell.Row, cell.Col] == BreachCodes.Unknown);
-                return (candidate, index, fill: LayoutParser.FillRatio(cells), hits: GlyphHits(screen, candidate, missing, CellSamples(candidate, cells), cancellationToken));
+                return (candidate, index, fill: LayoutParser.FillRatio(cells), hits: GlyphHits(glyphs, candidate, missing, CellSamples(candidate, cells), cancellationToken));
             })
             .OrderByDescending(c => c.fill)
             .ThenByDescending(c => c.hits)
@@ -168,8 +170,9 @@ public sealed class PuzzleReader
             .First().candidate;
     }
 
-    private static GridGeometry ExpandEdges(BgraImage screen, GridGeometry grid, IReadOnlyList<Token> tokens, CancellationToken cancellationToken)
+    private static GridGeometry ExpandEdges(GlyphFeatures glyphs, GridGeometry grid, IReadOnlyList<Token> tokens, CancellationToken cancellationToken)
     {
+        var screen = glyphs.Image;
         while (grid.Size < MaxGridSize)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -195,7 +198,7 @@ public sealed class PuzzleReader
                 var added = Enumerable.Range(0, candidate.Size).Select(c => new Cell(newRow, c))
                     .Concat(Enumerable.Range(0, candidate.Size).Where(r => r != newRow).Select(r => new Cell(r, newCol)))
                     .ToList();
-                var ratio = (double)GlyphHits(screen, candidate, added, samples, cancellationToken) / added.Count;
+                var ratio = (double)GlyphHits(glyphs, candidate, added, samples, cancellationToken) / added.Count;
                 if (ratio > bestRatio)
                 {
                     best = candidate;
@@ -231,15 +234,16 @@ public sealed class PuzzleReader
         return samples;
     }
 
-    private static int GlyphHits(BgraImage screen, GridGeometry grid, IEnumerable<Cell> cells, List<Token> samples, CancellationToken cancellationToken) =>
+    private static int GlyphHits(GlyphFeatures glyphs, GridGeometry grid, IEnumerable<Cell> cells, List<Token> samples, CancellationToken cancellationToken) =>
         samples.Count == 0 ? 0 : cells.Count(cell =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return GlyphMatcher.Classify(screen, grid.CellBox(cell.Row, cell.Col), samples) != BreachCodes.Unknown;
+            return GlyphMatcher.Classify(glyphs, grid.CellBox(cell.Row, cell.Col), samples) != BreachCodes.Unknown;
         });
 
-    private async Task<byte[,]> ReadCellsAsync(BgraImage screen, GridGeometry grid, TokenPool tokens, List<ReadWarning> warnings, CancellationToken cancellationToken)
+    private async Task<byte[,]> ReadCellsAsync(GlyphFeatures glyphs, GridGeometry grid, TokenPool tokens, List<ReadWarning> warnings, CancellationToken cancellationToken)
     {
+        var screen = glyphs.Image;
         var cells = LayoutParser.ReadCells(grid, tokens.Tokens);
         var padding = 0.35 * grid.PitchY;
         var retried = false;
@@ -272,7 +276,7 @@ public sealed class PuzzleReader
                     }
 
                     cancellationToken.ThrowIfCancellationRequested();
-                    cells[r, c] = GlyphMatcher.Classify(screen, grid.CellBox(r, c), samples);
+                    cells[r, c] = GlyphMatcher.Classify(glyphs, grid.CellBox(r, c), samples);
                     learned |= cells[r, c] != BreachCodes.Unknown;
                 }
             }

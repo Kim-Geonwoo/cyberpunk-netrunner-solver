@@ -46,6 +46,32 @@ public class OcrAndImageFileTests
     }
 
     [Fact]
+    public async Task PixelsAreHandedOverWithoutACopyAndStillRoundTrip()
+    {
+        var pixels = new byte[3 * 2 * 4];
+        for (var i = 0; i < pixels.Length; i++)
+        {
+            pixels[i] = i % 4 == 3 ? (byte)255 : (byte)(i * 9);
+        }
+
+        var image = new BgraImage(3, 2, pixels);
+        Assert.Same(pixels, ImageFile.SharedPixels(image));
+
+        var path = Path.Combine(Path.GetTempPath(), $"nrs-{Guid.NewGuid():N}.png");
+        try
+        {
+            await ImageFile.SavePngAsync(image, path);
+            var again = await ImageFile.LoadAsync(path);
+
+            Assert.Equal(pixels, again.Pixels.ToArray());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task ImageLargerThanTheLimitIsRejectedFromItsHeader()
     {
         // 1×1 PNG의 IHDR만 20000×20000으로 고친다. 픽셀을 풀기 전에 머리글 크기로 거절해야 한다.

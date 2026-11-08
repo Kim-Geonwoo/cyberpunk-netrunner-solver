@@ -5,18 +5,20 @@ public static class RouteMetrics
     public static int CountOverlaps(IReadOnlyList<Cell> path)
     {
         ArgumentNullException.ThrowIfNull(path);
-        var segments = new List<HashSet<Cell>>();
-        for (var i = 0; i + 1 < path.Count; i++)
+        if (!IsAxisAligned(path))
         {
-            segments.Add(Points(path[i], path[i + 1]));
+            return CountOverlapsByPoints(path);
         }
 
+        // 풀이 경로의 선분은 모두 가로나 세로다. 그런 선분이 지나는 칸은 [행 구간]×[열 구간] 직사각형이므로
+        // 두 선분이 칸을 공유하는 것은 행 구간과 열 구간이 함께 겹치는 것과 같다. 칸 집합을 만들지 않고 센다.
         var overlaps = 0;
-        for (var i = 0; i < segments.Count; i++)
+        for (var i = 0; i + 1 < path.Count; i++)
         {
-            for (var j = i + 2; j < segments.Count; j++)
+            for (var j = i + 2; j + 1 < path.Count; j++)
             {
-                if (segments[i].Overlaps(segments[j]))
+                if (Overlap(path[i].Row, path[i + 1].Row, path[j].Row, path[j + 1].Row)
+                    && Overlap(path[i].Col, path[i + 1].Col, path[j].Col, path[j + 1].Col))
                 {
                     overlaps++;
                 }
@@ -36,6 +38,45 @@ public static class RouteMetrics
         }
 
         return total;
+    }
+
+    private static bool IsAxisAligned(IReadOnlyList<Cell> path)
+    {
+        for (var i = 0; i + 1 < path.Count; i++)
+        {
+            if (path[i].Row != path[i + 1].Row && path[i].Col != path[i + 1].Col)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool Overlap(int a0, int a1, int b0, int b1) =>
+        Math.Max(Math.Min(a0, a1), Math.Min(b0, b1)) <= Math.Min(Math.Max(a0, a1), Math.Max(b0, b1));
+
+    private static int CountOverlapsByPoints(IReadOnlyList<Cell> path)
+    {
+        var segments = new List<HashSet<Cell>>();
+        for (var i = 0; i + 1 < path.Count; i++)
+        {
+            segments.Add(Points(path[i], path[i + 1]));
+        }
+
+        var overlaps = 0;
+        for (var i = 0; i < segments.Count; i++)
+        {
+            for (var j = i + 2; j < segments.Count; j++)
+            {
+                if (segments[i].Overlaps(segments[j]))
+                {
+                    overlaps++;
+                }
+            }
+        }
+
+        return overlaps;
     }
 
     private static HashSet<Cell> Points(Cell from, Cell to)

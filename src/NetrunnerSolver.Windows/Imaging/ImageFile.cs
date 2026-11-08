@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using NetrunnerSolver.Core.Imaging;
 using Windows.Graphics.Imaging;
@@ -47,9 +48,20 @@ public static class ImageFile
         await memory.AsStreamForRead().CopyToAsync(output);
     }
 
+    // 받는 쪽이 자기 버퍼로 복사하는 API에 픽셀 배열을 그대로 넘긴다. 화면 한 장(4K면 33MB)을 한 번 덜 복사한다.
+    // 돌려받은 배열은 읽기만 한다.
+    public static byte[] SharedPixels(BgraImage image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        return MemoryMarshal.TryGetArray(image.PixelMemory, out var segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length
+            ? segment.Array
+            : image.Pixels.ToArray();
+    }
+
+    // CreateCopyFromBuffer가 픽셀을 비트맵으로 복사하므로 원본 배열을 감싸기만 한다.
     internal static SoftwareBitmap ToSoftwareBitmap(BgraImage image) =>
         SoftwareBitmap.CreateCopyFromBuffer(
-            image.Pixels.ToArray().AsBuffer(),
+            SharedPixels(image).AsBuffer(),
             BitmapPixelFormat.Bgra8,
             image.Width,
             image.Height,

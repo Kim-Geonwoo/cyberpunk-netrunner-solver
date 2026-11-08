@@ -20,7 +20,7 @@ internal static class PreviewRenderer
         var width = image.Width;
         var height = image.Height;
         var root = new Canvas { Width = width, Height = height };
-        var background = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, image.Pixels.ToArray(), width * 4);
+        var background = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, ImageFile.SharedPixels(image), width * 4);
         root.Children.Add(new Image { Source = background, Width = width, Height = height });
         var overlay = new Canvas();
         root.Children.Add(overlay);
