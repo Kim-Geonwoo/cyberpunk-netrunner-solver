@@ -138,7 +138,7 @@ public class GlyphFallbackTests
             new([0x55, 0x55], [new Box(400, 101, 20, 16), new Box(430, 101, 20, 16)]),
         ];
 
-        var result = SequenceCompleter.Complete(screen, grid, new byte[5, 5], found);
+        var result = SequenceCompleter.Complete(screen, grid, new byte[5, 5], found, CancellationToken.None);
 
         Assert.InRange(result.Count, 2, 6);
     }

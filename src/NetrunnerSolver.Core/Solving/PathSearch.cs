@@ -18,7 +18,17 @@ internal static class PathSearch
             yield break;
         }
 
-        var used = new bool[size, size];
+        // 칸 코드와 사용 표시를 1차원 배열(행×크기+열)로 두어 2차원 배열 접근을 피한다. 탐색 순서는 그대로다.
+        var codes = new byte[size * size];
+        for (var r = 0; r < size; r++)
+        {
+            for (var c = 0; c < size; c++)
+            {
+                codes[(r * size) + c] = matrix[r, c];
+            }
+        }
+
+        var used = new bool[size * size];
         var path = new Cell[length];
         var next = new int[length];
         var depth = 0;
@@ -35,7 +45,7 @@ internal static class PathSearch
                 depth--;
                 if (depth >= 0)
                 {
-                    used[path[depth].Row, path[depth].Col] = false;
+                    used[(path[depth].Row * size) + path[depth].Col] = false;
                 }
 
                 continue;
@@ -48,7 +58,8 @@ internal static class PathSearch
                     ? new Cell(index, path[depth - 1].Col)
                     : new Cell(path[depth - 1].Row, index);
 
-            if (used[cell.Row, cell.Col] || !Matches(matrix[cell], pattern[depth]))
+            var at = (cell.Row * size) + cell.Col;
+            if (used[at] || !Matches(codes[at], pattern[depth]))
             {
                 continue;
             }
@@ -60,7 +71,7 @@ internal static class PathSearch
                 continue;
             }
 
-            used[cell.Row, cell.Col] = true;
+            used[at] = true;
             depth++;
             next[depth] = 0;
         }

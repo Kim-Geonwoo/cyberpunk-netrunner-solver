@@ -6,5 +6,7 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <Deterministic>true</Deterministic>
+    <!-- 패키지 버전을 packages.lock.json에 고정한다. CI에서는 verify.sh가 잠금 모드(locked-mode)로 복원한다. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 </Project>

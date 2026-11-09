@@ -6,6 +6,7 @@ using System.Windows.Media.Imaging;
 using NetrunnerSolver.App.Interop;
 using NetrunnerSolver.Core.Imaging;
 using NetrunnerSolver.Windows.Capture;
+using NetrunnerSolver.Windows.Imaging;
 
 namespace NetrunnerSolver.App.Simulation;
 
@@ -23,7 +24,7 @@ internal sealed class SimulatedGameWindow : Window
         ResizeMode = ResizeMode.NoResize;
         Background = Brushes.Black;
         var dpi = 96 * area.DpiScale;
-        var bitmap = BitmapSource.Create(image.Width, image.Height, dpi, dpi, PixelFormats.Bgra32, null, image.Pixels.ToArray(), image.Width * 4);
+        var bitmap = BitmapSource.Create(image.Width, image.Height, dpi, dpi, PixelFormats.Bgra32, null, ImageFile.SharedPixels(image), image.Width * 4);
         bitmap.Freeze();
         Content = new Image { Source = bitmap, Stretch = Stretch.None, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         SourceInitialized += (_, _) => Place();

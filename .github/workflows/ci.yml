@@ -4,16 +4,26 @@ on:
   push:
     branches: [main, dev]
   pull_request:
+permissions:
+  contents: read
+# 같은 브랜치·PR에 새 커밋이 오면 앞 실행을 취소한다. 집 서버 CI(home-ci)는 cancel-in-progress가 문자 그대로 true일 때만 돌린다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       DOTNET_INSTALL_DIR: ${{ github.workspace }}/../.dotnet
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      # 액션은 태그가 아니라 커밋으로 고정한다. 주석의 버전은 고정 당시 v4 태그가 가리키던 것이다.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           global-json-file: global.json
       - run: ./verify.sh

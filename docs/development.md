@@ -18,9 +18,11 @@
   - 컴파일 경고를 오류로 다루며 빌드(`dotnet build -warnaserror`)합니다.
   - 단위 시험(`dotnet test`)을 실행합니다.
   - Windows 환경에서는 전체 솔루션을 검증하며, Windows가 아닌 환경에서는 OS 무관 프로젝트만 묶은 `ci.slnf`를 대상으로 검증합니다.
+  - 패키지 버전은 프로젝트마다 `packages.lock.json`에 고정합니다. CI(`CI=true`)에서는 잠금 모드(`--locked-mode`)로 복원하므로 잠금 파일과 다르면 실패합니다. 패키지를 바꿨다면 로컬에서 `./verify.sh`를 실행해 잠금 파일을 갱신하고 함께 커밋합니다.
 - **`./publish.sh`**:
   - `publish/framework-dependent` 디렉터리에 .NET 10 데스크톱 런타임이 필요한 단일 exe를 만듭니다.
   - `publish/self-contained` 디렉터리에 런타임이 포함되어 별도 설치 없이 바로 실행 가능한 단일 exe를 만듭니다.
+  - 발행용 복원은 커밋된 잠금 파일을 건드리지 않도록 각 프로젝트의 `obj/publish.packages.lock.json`을 씁니다.
 
 ## 실행 인자
 

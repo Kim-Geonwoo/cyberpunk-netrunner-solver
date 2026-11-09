@@ -8,11 +8,15 @@ cd "$(dirname "$0")"
 project=src/NetrunnerSolver.App/NetrunnerSolver.App.csproj
 mkdir -p publish
 
-dotnet publish "$project" -c Release -r win-x64 --self-contained false \
+# win-x64·단일 파일 복원은 잠금 파일에 RID 항목과 SDK 버전을 따르는 ILLink를 더한다.
+# 커밋된 packages.lock.json을 건드리지 않도록 발행용 잠금 파일은 각 프로젝트의 obj/에 따로 둔다.
+lock=-p:NuGetLockFilePath=obj/publish.packages.lock.json
+
+dotnet publish "$project" -c Release -r win-x64 --self-contained false "$lock" \
   -p:PublishSingleFile=true -p:DebugType=none \
   -o publish/framework-dependent
 
-dotnet publish "$project" -c Release -r win-x64 --self-contained true \
+dotnet publish "$project" -c Release -r win-x64 --self-contained true "$lock" \
   -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none \
   -o publish/self-contained
 

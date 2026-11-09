@@ -1,41 +1,66 @@
 using NetrunnerSolver.Core.Input;
 using NetrunnerSolver.Core.Session;
 using NetrunnerSolver.Core.Settings;
+using NetrunnerSolver.Core.Solving;
 using NetrunnerSolver.Core.Text;
 
 namespace NetrunnerSolver.Core.Tests;
 
 public class SolveSessionTests
 {
-    private static SolveSession WebSession() => new(
-        new CodeMatrix(new byte[,]
+    private static readonly byte[,] WebCells =
+    {
+        { 0x55, 0x1C, 0xBD, 0x1C, 0x1C },
+        { 0x55, 0x55, 0xBD, 0x1C, 0xE9 },
+        { 0xE9, 0x1C, 0x55, 0x1C, 0xBD },
+        { 0x55, 0x1C, 0x1C, 0xBD, 0x55 },
+        { 0xE9, 0x55, 0x1C, 0xE9, 0xE9 },
+    };
+
+    private static Task<SolveSession> WebSessionAsync() =>
+        SolveSession.StartAsync(new CodeMatrix(WebCells), [[0xE9, 0x1C], [0xE9, 0x55], [0xE9, 0x55, 0x1C]], 4);
+
+    // 1C로 채운 8×8의 맨 아랫줄에만 다른 코드 다섯을 두고 그 코드들을 잇는 시퀀스를 주면, 버퍼 12에서 1초 제한까지 푼다.
+    // 버퍼 1에서는 쓸 수 있는 시퀀스가 없어 바로 끝난다.
+    private static Task<SolveSession> HeavySessionAsync(int bufferSize)
+    {
+        var cells = new byte[8, 8];
+        for (var r = 0; r < 8; r++)
         {
-            { 0x55, 0x1C, 0xBD, 0x1C, 0x1C },
-            { 0x55, 0x55, 0xBD, 0x1C, 0xE9 },
-            { 0xE9, 0x1C, 0x55, 0x1C, 0xBD },
-            { 0x55, 0x1C, 0x1C, 0xBD, 0x55 },
-            { 0xE9, 0x55, 0x1C, 0xE9, 0xE9 },
-        }),
-        [[0xE9, 0x1C], [0xE9, 0x55], [0xE9, 0x55, 0x1C]],
-        4);
+            for (var c = 0; c < 8; c++)
+            {
+                cells[r, c] = 0x1C;
+            }
+        }
+
+        byte[] rare = [0x55, 0x7A, 0xBD, 0xE9, 0xFF];
+        for (var c = 0; c < rare.Length; c++)
+        {
+            cells[7, c] = rare[c];
+        }
+
+        IReadOnlyList<IReadOnlyList<byte>> chain = [[0x55, 0x7A], [0x7A, 0xBD], [0xBD, 0xE9], [0xE9, 0xFF], [0xFF, 0x55], [0x1C, 0x1C]];
+        return SolveSession.StartAsync(new CodeMatrix(cells), chain, bufferSize);
+    }
 
     [Fact]
-    public void StartsWithTopFirstPriorityAndASolution()
+    public async Task StartsWithTopFirstPriorityAndASolution()
     {
-        var session = WebSession();
+        using var session = await WebSessionAsync();
 
         Assert.Equal([0, 1, 2], session.Priority);
         Assert.Equal([true, false, false], session.Result.Completed);
     }
 
     [Fact]
-    public void MovingPriorityResolvesAndRaisesChangedOnce()
+    public async Task MovingPriorityResolvesAndRaisesChangedOnce()
     {
-        var session = WebSession();
+        using var session = await WebSessionAsync();
         var changes = 0;
         session.Changed += (_, _) => changes++;
 
         session.MovePriority(0, +2);
+        await session.Solving;
 
         Assert.Equal([1, 2, 0], session.Priority);
         Assert.Equal([false, true, true], session.Result.Completed);
@@ -43,26 +68,145 @@ public class SolveSessionTests
     }
 
     [Fact]
-    public void BufferSizeIsClamped()
+    public async Task BufferSizeIsClamped()
     {
-        var session = WebSession();
+        using var session = await WebSessionAsync();
 
         session.SetBufferSize(0);
         Assert.Equal(1, session.BufferSize);
         session.SetBufferSize(20);
         Assert.Equal(12, session.BufferSize);
+        await session.Solving;
     }
 
     [Fact]
-    public void CyclingCellsChangesTheMatrixAndSequences()
+    public async Task CyclingCellsChangesTheMatrixAndSequences()
     {
-        var session = WebSession();
+        using var session = await WebSessionAsync();
 
         session.CycleMatrixCell(new Cell(0, 0));
         session.CycleSequenceCode(0, 1);
+        await session.Solving;
 
         Assert.Equal(0x7A, session.Matrix[0, 0]);
         Assert.Equal(new byte[] { 0xE9, 0x55 }, session.Sequences[0]);
+    }
+
+    [Fact]
+    public async Task ChangeReturnsBeforeASlowSolveFinishes()
+    {
+        // 예전에는 고친 자리(UI 스레드)에서 1초를 다 풀고서야 돌아왔다.
+        using var session = await HeavySessionAsync(bufferSize: 1);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        session.SetBufferSize(12);
+
+        Assert.True(clock.ElapsedMilliseconds < 200, $"took {clock.ElapsedMilliseconds} ms");
+        Assert.False(session.Solving.IsCompleted);
+        await session.Solving;
+        Assert.True(session.Result.TimedOut);
+    }
+
+    [Fact]
+    public async Task DisposeCancelsTheRunningSolve()
+    {
+        var session = await HeavySessionAsync(bufferSize: 1);
+        var before = session.Result;
+        var changes = 0;
+        session.Changed += (_, _) => changes++;
+        session.SetBufferSize(12);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        session.Dispose();
+        await session.Solving;
+
+        Assert.True(clock.ElapsedMilliseconds < 800, $"took {clock.ElapsedMilliseconds} ms");
+        Assert.Equal(0, changes);
+        Assert.Same(before, session.Result);
+        session.SetBufferSize(5);
+        Assert.True(session.Solving.IsCompleted);
+    }
+
+    [Fact]
+    public async Task StartObservesTheCallersToken()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            SolveSession.StartAsync(new CodeMatrix(WebCells), [[0xE9, 0x1C]], 4, cts.Token));
+    }
+
+    [Fact]
+    public void ChangedArrivesOnTheChangingThreadAndOnlyForTheLatestState()
+    {
+        var context = new PumpingContext();
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            using var session = context.Run(WebSessionAsync());
+            var threads = new List<int>();
+            session.Changed += (_, _) => threads.Add(Environment.CurrentManagedThreadId);
+
+            session.MovePriority(0, +2);
+            Assert.Empty(threads);
+            session.MovePriority(2, -1);
+            context.Run(session.Solving);
+            context.Drain();
+
+            Assert.Equal([Environment.CurrentManagedThreadId], threads);
+            Assert.Equal([2, 1, 0], session.Priority);
+            var expected = Solver.Solve(new SolveRequest(session.Matrix, session.Sequences, 4, [2, 1, 0], TimeSpan.FromSeconds(1)));
+            Assert.Equal(expected.Completed, session.Result.Completed);
+            Assert.Equal(expected.Path, session.Result.Path);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+    }
+
+    // UI 스레드처럼 Post된 일을 이 스레드에서 차례로 돌린다.
+    private sealed class PumpingContext : SynchronizationContext
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _queue = new();
+
+        public override void Post(SendOrPostCallback d, object? state) => _queue.Enqueue((d, state));
+
+        public T Run<T>(Task<T> task)
+        {
+            Run((Task)task);
+            return task.GetAwaiter().GetResult();
+        }
+
+        public void Run(Task task)
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (!task.IsCompleted)
+            {
+                if (!Drain())
+                {
+                    Thread.Sleep(1);
+                }
+
+                Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10), "timed out pumping");
+            }
+
+            task.GetAwaiter().GetResult();
+        }
+
+        public bool Drain()
+        {
+            var ran = false;
+            while (_queue.TryDequeue(out var item))
+            {
+                item.Callback(item.State);
+                ran = true;
+            }
+
+            return ran;
+        }
     }
 }
 
@@ -247,5 +391,37 @@ public class UiTextTests
     public void ResolvesLanguage(string setting, string culture, string expected)
     {
         Assert.Equal(expected, UiText.ResolveLanguage(setting, culture));
+    }
+}
+
+public class LogTextTests
+{
+    private static readonly DateTime Time = new(2026, 11, 8, 13, 5, 7, 89);
+
+    [Fact]
+    public void PlainMessageIsOneLine()
+    {
+        Assert.Equal($"13:05:07.089 INFO read 1920x1080 in 35 ms, 로그{Environment.NewLine}", LogText.Line(Time, "INFO", "read 1920x1080 in 35 ms, 로그"));
+    }
+
+    [Fact]
+    public void MessageCannotForgeANewRecord()
+    {
+        var line = LogText.Line(Time, "INFO", "first\r\n13:00:00.000 ERROR forged\rsecond\nthird\u2028fourth");
+
+        var lines = line.Split(Environment.NewLine);
+
+        Assert.Equal("13:05:07.089 INFO first", lines[0]);
+        Assert.Equal(
+            ["    13:00:00.000 ERROR forged", "    second", "    third", "    fourth", string.Empty],
+            lines[1..]);
+    }
+
+    [Fact]
+    public void OtherControlAndFormatCharactersAreEscaped()
+    {
+        var line = LogText.Line(Time, "ERR\tOR", "a\u001b[31mb\u0000c\u202Ed\u00ADe");
+
+        Assert.Equal($@"13:05:07.089 ERR\u0009OR a\u001B[31mb\u0000c\u202Ed\u00ADe{Environment.NewLine}", line);
     }
 }

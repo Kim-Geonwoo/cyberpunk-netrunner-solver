@@ -26,6 +26,18 @@ public class LayoutParserTests
     }
 
     [Fact]
+    public void GridGeometryIsExactlyAsBefore()
+    {
+        // 묶음 평균·간격 지지를 할당 없이 다시 쓴 뒤에도 실수 값까지 같다(바뀌면 칸 위치와 오버레이가 미세하게 움직인다).
+        var grid = LayoutParser.FindMatrix(OcrFixture.Tokens("game-ko-5x5-a.ko"));
+
+        Assert.NotNull(grid);
+        Assert.Equal(
+            (5, 336.5799999999999, 385.86, 67.37000000000002, 67.51, 34.0, 24.0),
+            (grid.Size, grid.OriginX, grid.OriginY, grid.PitchX, grid.PitchY, grid.CellWidth, grid.CellHeight));
+    }
+
+    [Fact]
     public void MissingInnerRowStaysInTheGridAsUnknown()
     {
         var full = OcrFixture.Tokens("game-ko-5x5-a.ko");
@@ -86,6 +98,17 @@ public class LayoutParserTests
 
         Assert.Null(LayoutParser.FindMatrix(sequenceOnly));
         Assert.Null(LayoutParser.FindMatrix([]));
+    }
+
+    [Fact]
+    public void SequenceColumnWhereEveryCodeTiesGivesNoSequences()
+    {
+        // 엔진 둘이 같은 자리를 서로 다르게 읽으면 그 자리는 '?'가 되고, 남는 줄이 없을 수 있다.
+        var grid = new GridGeometry(5, 100, 200, 40, 50, 24, 20, 0, 0);
+        var x = grid.Bounds.Right + 100;
+        Token[] tokens = [new(0x1C, new Box(x, 200, 24, 20)), new(0x55, new Box(x, 200, 24, 20))];
+
+        Assert.Empty(LayoutParser.FindSequences(grid, tokens));
     }
 
     [Fact]

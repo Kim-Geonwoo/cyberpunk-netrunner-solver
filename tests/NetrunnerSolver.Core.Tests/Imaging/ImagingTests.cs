@@ -31,6 +31,22 @@ public class ImagingTests
     }
 
     [Fact]
+    public void SizeWhoseByteCountOverflowsIsRejected()
+    {
+        // 65536×16384×4 = 2^32 는 int로 0이 되어 빈 배열과 맞아 버린다.
+        Assert.Throws<ArgumentException>(() => new BgraImage(65536, 16384, []));
+    }
+
+    [Fact]
+    public void SidesAreLimitedBeforeAnyBufferIsSized()
+    {
+        Assert.Equal(16384 * 16384 * 4, BgraImage.ByteCount(BgraImage.MaxDimension, BgraImage.MaxDimension));
+        Assert.Throws<ArgumentException>(() => BgraImage.ByteCount(BgraImage.MaxDimension + 1, 1));
+        Assert.Throws<ArgumentException>(() => BgraImage.ByteCount(1, 0));
+        Assert.Throws<ArgumentException>(() => new BgraImage(BgraImage.MaxDimension + 1, 1, new byte[(BgraImage.MaxDimension + 1) * 4]));
+    }
+
+    [Fact]
     public void CropClampsToImage()
     {
         var image = Solid(4, 4, 0);

@@ -95,7 +95,7 @@ public static class DxgiCapture
         {
             var width = (int)description.Width;
             var height = (int)description.Height;
-            var pixels = new byte[width * height * 4];
+            var pixels = new byte[BgraImage.ByteCount(width, height)];
             for (var y = 0; y < height; y++)
             {
                 Marshal.Copy(mapped.DataPointer + (y * (int)mapped.RowPitch), pixels, y * width * 4, width * 4);

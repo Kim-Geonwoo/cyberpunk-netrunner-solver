@@ -20,7 +20,7 @@ internal static class PreviewRenderer
         var width = image.Width;
         var height = image.Height;
         var root = new Canvas { Width = width, Height = height };
-        var background = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, image.Pixels.ToArray(), width * 4);
+        var background = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, ImageFile.SharedPixels(image), width * 4);
         root.Children.Add(new Image { Source = background, Width = width, Height = height });
         var overlay = new Canvas();
         root.Children.Add(overlay);
@@ -38,7 +38,7 @@ internal static class PreviewRenderer
         else
         {
             var detected = reading.Buffer is { HasContent: false };
-            var session = new SolveSession(reading.Matrix!, [.. reading.Sequences.Select(s => s.Codes)], detected ? reading.Buffer!.SlotCount : fallbackBuffer);
+            using var session = await SolveSession.StartAsync(reading.Matrix!, [.. reading.Sequences.Select(s => s.Codes)], detected ? reading.Buffer!.SlotCount : fallbackBuffer).ConfigureAwait(true);
             panel.SetSession(session, reading, detected, language);
             OverlayCanvas.Draw(overlay, reading.Grid!, session.Result, session.Matrix, 1.0);
         }
