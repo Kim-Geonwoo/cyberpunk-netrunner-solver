@@ -14,11 +14,14 @@ public static class ImageFile
         await using var file = File.OpenRead(path);
         using var stream = file.AsRandomAccessStream();
         var decoder = await BitmapDecoder.CreateAsync(stream);
-        if (Math.Max(decoder.PixelWidth, decoder.OrientedPixelWidth) > BgraImage.MaxDimension
-            || Math.Max(decoder.PixelHeight, decoder.OrientedPixelHeight) > BgraImage.MaxDimension)
+        var width = Math.Max(decoder.PixelWidth, decoder.OrientedPixelWidth);
+        var height = Math.Max(decoder.PixelHeight, decoder.OrientedPixelHeight);
+        if (width > BgraImage.MaxDimension || height > BgraImage.MaxDimension || (long)width * height > BgraImage.MaxPixels)
         {
             // 픽셀을 풀기 전에 머리글의 크기로 거절한다. 풀고 나면 이미 그만큼 할당한 뒤다.
-            throw new ArgumentException($"Image is {decoder.PixelWidth}x{decoder.PixelHeight}; at most {BgraImage.MaxDimension} pixels per side are supported.", nameof(path));
+            throw new ArgumentException(
+                $"Image is {decoder.PixelWidth}x{decoder.PixelHeight}; at most {BgraImage.MaxDimension} pixels per side and {BgraImage.MaxPixels} pixels in total are supported.",
+                nameof(path));
         }
 
         using var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);

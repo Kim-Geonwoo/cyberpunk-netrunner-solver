@@ -45,6 +45,9 @@ public sealed class PanelView : Border
 
     public PuzzleReading? Reading => _reading;
 
+    // 저장할 이번 캡처가 있는지. 다음 Set* 호출로 그릴 때 반영한다.
+    public bool CanSaveCapture { get; set; } = true;
+
     public void SetSession(SolveSession session, PuzzleReading reading, bool bufferDetected, string language)
     {
         Detach();
@@ -294,7 +297,10 @@ public sealed class PanelView : Border
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
         row.Children.Add(TextButton(T("action.reread"), (_, _) => RereadRequested?.Invoke(this, EventArgs.Empty)));
-        row.Children.Add(TextButton(T("action.saveCapture"), (_, _) => SaveCaptureRequested?.Invoke(this, EventArgs.Empty)));
+        var save = TextButton(T("action.saveCapture"), (_, _) => SaveCaptureRequested?.Invoke(this, EventArgs.Empty));
+        save.IsEnabled = CanSaveCapture;
+        save.Opacity = CanSaveCapture ? 1 : 0.4;
+        row.Children.Add(save);
         return row;
     }
 

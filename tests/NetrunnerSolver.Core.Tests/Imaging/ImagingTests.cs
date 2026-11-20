@@ -38,9 +38,19 @@ public class ImagingTests
     }
 
     [Fact]
+    public void TotalPixelsAreCappedAboveTheLargestSingleMonitor()
+    {
+        // 8K 모니터 한 대는 받고, 한 변은 상한 안이어도 픽셀이 너무 많은 이미지(8000×8000, 256MB)는 할당 전에 거절한다.
+        Assert.Equal(7680 * 4320 * 4, BgraImage.ByteCount(7680, 4320));
+        var error = Assert.Throws<ArgumentException>(() => BgraImage.ByteCount(8000, 8000));
+        Assert.Contains("8000x8000", error.Message, StringComparison.Ordinal);
+        Assert.Throws<ArgumentException>(() => new BgraImage(8000, 8000, []));
+    }
+
+    [Fact]
     public void SidesAreLimitedBeforeAnyBufferIsSized()
     {
-        Assert.Equal(16384 * 16384 * 4, BgraImage.ByteCount(BgraImage.MaxDimension, BgraImage.MaxDimension));
+        Assert.Equal(BgraImage.MaxDimension * 4, BgraImage.ByteCount(BgraImage.MaxDimension, 1));
         Assert.Throws<ArgumentException>(() => BgraImage.ByteCount(BgraImage.MaxDimension + 1, 1));
         Assert.Throws<ArgumentException>(() => BgraImage.ByteCount(1, 0));
         Assert.Throws<ArgumentException>(() => new BgraImage(BgraImage.MaxDimension + 1, 1, new byte[(BgraImage.MaxDimension + 1) * 4]));

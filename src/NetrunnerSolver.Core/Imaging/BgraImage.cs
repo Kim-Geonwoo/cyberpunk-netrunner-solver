@@ -6,6 +6,10 @@ public sealed class BgraImage
     // 이 안에서는 가로×세로×4가 int를 넘지 않는다(16384²×4 = 2^30).
     public const int MaxDimension = 16384;
 
+    // 총 픽셀 상한. 가장 큰 모니터 한 대(8K, 7680×4320 = 3,318만 픽셀)를 여유 있게 담고,
+    // 한 장의 픽셀 배열을 160MB 안으로 묶는다. 한 변 상한만으로는 16384²(1GiB)까지 허용된다.
+    public const int MaxPixels = 40_000_000;
+
     private readonly byte[] _pixels;
 
     public BgraImage(int width, int height, byte[] pixels)
@@ -35,12 +39,17 @@ public sealed class BgraImage
     // 픽셀을 복사해 가는 API(WinRT·WPF)에 배열째 넘길 때 쓴다. 읽기 전용으로만 다룬다.
     public ReadOnlyMemory<byte> PixelMemory => _pixels;
 
-    // 픽셀 버퍼 크기. 한 변이 1..MaxDimension을 벗어나면 할당 전에 거절한다.
+    // 픽셀 버퍼 크기. 한 변이 1..MaxDimension을 벗어나거나 총 픽셀이 MaxPixels를 넘으면 할당 전에 거절한다.
     public static int ByteCount(int width, int height)
     {
         if (width <= 0 || height <= 0 || width > MaxDimension || height > MaxDimension)
         {
             throw new ArgumentException($"Image size must be 1..{MaxDimension} per side, got {width}x{height}.", nameof(width));
+        }
+
+        if ((long)width * height > MaxPixels)
+        {
+            throw new ArgumentException($"Image size {width}x{height} exceeds {MaxPixels} pixels.", nameof(width));
         }
 
         return checked(width * height * 4);
