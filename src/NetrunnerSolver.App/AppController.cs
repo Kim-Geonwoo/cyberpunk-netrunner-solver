@@ -83,6 +83,7 @@ internal sealed class AppController : IDisposable
         _panel.Hide();
         _poller?.WatchEscape(null);
         IsShown = false;
+        _lastScreen = null;
     }
 
     public async Task RereadAsync()
@@ -110,16 +111,21 @@ internal sealed class AppController : IDisposable
         MonitorArea? area = null;
         try
         {
+            // 지난 판독의 화면은 버린다. 이번에 캡처하지 못하면 저장할 화면이 없다.
+            _lastScreen = null;
             area = _simulated is null ? MonitorLocator.FromForegroundWindow() : MonitorLocator.Primary();
             var target = area;
             using var timeout = new CancellationTokenSource(ReadTimeout);
             var screen = _simulated ?? await Task.Run(() => ScreenCapture.Capture(target), timeout.Token).ConfigureAwait(true);
+
+            // 판독이 실패해도 그 실패한 화면을 저장할 수 있게 캡처 직후에 기억한다.
+            _lastScreen = screen;
             var reading = await Task.Run(() => _reader.ReadAsync(screen, timeout.Token), timeout.Token).ConfigureAwait(true);
             FileLog.Info($"read {screen.Width}x{screen.Height} in {reading.Elapsed.TotalMilliseconds:F0} ms, tokens {reading.TokenCount}, grid {reading.Grid?.Size.ToString(CultureInfo.InvariantCulture) ?? "-"}, sequences {reading.Sequences.Count}, buffer {reading.Buffer?.SlotCount.ToString(CultureInfo.InvariantCulture) ?? "-"}, warnings [{string.Join(", ", reading.Warnings)}]");
             _area = area;
-            _lastScreen = screen;
             _reading = reading;
             DropSession();
+            _panel.CanSaveCapture = true;
 
             if (reading.Outcome == ReadOutcome.NotFound)
             {
@@ -171,6 +177,7 @@ internal sealed class AppController : IDisposable
 
         _reading = null;
         _area = area;
+        _panel.CanSaveCapture = _lastScreen is not null;
         _panel.ShowNotFound(_language, area);
         _poller?.WatchEscape(() => _dispatcher.InvokeAsync(Hide));
         IsShown = true;

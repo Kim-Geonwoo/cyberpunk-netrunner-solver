@@ -71,23 +71,26 @@ public class OcrAndImageFileTests
         }
     }
 
-    [Fact]
-    public async Task ImageLargerThanTheLimitIsRejectedFromItsHeader()
+    [Theory]
+    [InlineData(20000, 20000)]
+    [InlineData(9000, 9000)]
+    public async Task ImageLargerThanTheLimitIsRejectedFromItsHeader(int width, int height)
     {
-        // 1×1 PNG의 IHDR만 20000×20000으로 고친다. 픽셀을 풀기 전에 머리글 크기로 거절해야 한다.
+        // 1×1 PNG의 IHDR만 고친다. 한 변이 상한을 넘든(20000) 총 픽셀이 상한을 넘든(9000×9000)
+        // 픽셀을 풀기 전에 머리글 크기로 거절해야 한다.
         var path = Path.Combine(Path.GetTempPath(), $"nrs-huge-{Guid.NewGuid():N}.png");
         try
         {
             await ImageFile.SavePngAsync(new BgraImage(1, 1, new byte[4]), path);
             var bytes = await File.ReadAllBytesAsync(path);
             Assert.Equal("IHDR"u8.ToArray(), bytes[12..16]);
-            BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(16), 20000);
-            BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(20), 20000);
+            BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(16), width);
+            BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(20), height);
             BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(29), Crc32(bytes.AsSpan(12, 17)));
             await File.WriteAllBytesAsync(path, bytes);
 
             var error = await Assert.ThrowsAsync<ArgumentException>(() => ImageFile.LoadAsync(path));
-            Assert.Contains("20000x20000", error.Message, StringComparison.Ordinal);
+            Assert.Contains($"{width}x{height}", error.Message, StringComparison.Ordinal);
         }
         finally
         {

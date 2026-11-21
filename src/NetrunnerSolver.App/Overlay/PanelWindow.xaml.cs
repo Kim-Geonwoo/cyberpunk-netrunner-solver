@@ -47,6 +47,12 @@ public partial class PanelWindow : Window
         Present();
     }
 
+    public bool CanSaveCapture
+    {
+        get => _view.CanSaveCapture;
+        set => _view.CanSaveCapture = value;
+    }
+
     public void SetLanguage(string language) => _view.SetLanguage(language);
 
     private void Present()
